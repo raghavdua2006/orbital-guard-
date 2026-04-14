@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORBITAL GUARD | Advanced Predictive Intelligence</title>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- PDF Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #05070a;
+            --panel: rgba(10, 15, 25, 0.85);
+            --border: rgba(0, 255, 255, 0.1);
+            --border-glow: rgba(0, 255, 255, 0.3);
+            
+            --nom: #00ffcc;
+            --deg: #ffcc00;
+            --crit: #ff3366;
+            --ui: #55ffff;
+            --ui-dim: rgba(85, 255, 255, 0.3);
+            
+            --font-head: 'Orbitron', sans-serif;
+            --font-body: 'Rajdhani', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg); color: var(--ui);
+            font-family: var(--font-body); height: 100vh; overflow: auto;
+            display: flex; flex-direction: column; position: relative;
+        }
+
+        #stars-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+        
+        /* CRT SCANLINE OVERLAY */
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%;
+            z-index: 1000; pointer-events: none; opacity: 0.4;
+        }
+
+        .glass-panel {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+            backdrop-filter: blur(20px); display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: inset 0 0 30px rgba(0,255,255,0.03); position: relative;
+            clip-path: polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+        }
+        .glass-panel::after {
+            content: ''; position: absolute; top: 0; right: 0; width: 20px; height: 2px; background: var(--ui); opacity: 0.5;
+        }
+
+        .h-title {
+            font-family: var(--font-head); font-size: 20px; font-weight: 900; letter-spacing: 4px;
+            text-shadow: 0 0 15px var(--ui-dim); display: flex; align-items: center; gap: 12px; margin-right: auto;
+        }
+        .h-title::before {
+            content: ''; display: block; width: 12px; height: 12px; background: var(--ui);
+            border-radius: 50%; box-shadow: 0 0 10px var(--ui); animation: pulse-cyan 2s infinite;
+        }
+
+        .h-stat { text-align: center; }
+        .h-val { font-family: var(--font-head); font-size: 16px; font-weight: 700; }
+        .h-lbl { font-size: 10px; color: var(--ui-dim); letter-spacing: 2px; text-transform: uppercase; }
+
+        .btn-action {
+            background: rgba(0,255,255,0.1); border: 1px solid var(--ui); color: var(--ui);
+            padding: 8px 16px; border-radius: 4px; font-family: var(--font-head); font-size: 10px; font-weight: 700;
+            cursor: pointer; letter-spacing: 1px; transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+        }
+        .btn-action:hover { background: var(--ui); color: #000; box-shadow: 0 0 15px var(--ui-dim); }
+
+        /* MAIN GRID */
+        #main-grid {
+            position: relative; z-index: 10; flex: 1; display: grid;
+            grid-template-columns: 320px 1fr 360px; gap: 20px; padding: 20px;
+            height: calc(100vh - 60px);
+        }
+
+        .glass-panel {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+            backdrop-filter: blur(12px); display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,255,255,0.02), 0 10px 30px rgba(0,0,0,0.5); position: relative;
+        }
+        .glass-panel::before { content: ''; position: absolute; top:0; left:0; width:30%; height:1px; background: linear-gradient(90deg, transparent, var(--ui), transparent); }
+
+        .p-head {
+            padding: 12px 16px; border-bottom: 1px solid rgba(0,255,255,0.1);
+            font-family: var(--font-head); font-size: 12px; letter-spacing: 2px;
+            color: #fff; background: rgba(0,255,255,0.03); display: flex; justify-content: space-between; align-items: center;
+        }
+        .p-content { padding: 16px; flex: 1; overflow-y: auto; overflow-x: hidden; }
+        .p-content::-webkit-scrollbar { width: 4px; }
+        .p-content::-webkit-scrollbar-thumb { background: var(--ui-dim); border-radius: 4px; }
+
+        /* LEFT */
+        .sat-btn {
+            display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px;
+            background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.2s;
+        }
+        .sat-btn:hover { background: rgba(0,255,255,0.08); }
+        .sat-btn.active { border-color: var(--ui); box-shadow: 0 0 15px var(--border-glow); }
+        .s-name { font-family: var(--font-head); font-size: 13px; font-weight: 700; color: #fff;}
+        .s-badge { padding: 2px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; letter-spacing: 1px; }
+
+        .swarm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .swarm-node {
+            height: 40px; border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--font-head); font-size: 10px; color: #fff; position: relative; overflow: hidden; background: rgba(0,0,0,0.5);
+        }
+        .swarm-node::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; }
+
+        .event-log { font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .log-item { display: flex; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-ts { color: var(--ui-dim); white-space: nowrap; }
+        .log-msg { color: #ccc; }
+
+        .action-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px;}
+        .act-btn {
+            background: rgba(0,255,255,0.05); border: 1px solid var(--border); padding: 10px; color: var(--ui);
+            font-family: var(--font-body); font-weight: 600; text-align: left; cursor: default; font-size: 13px;
+            border-radius: 4px; display: flex; align-items: center; gap: 10px;
+        }
+        .act-btn i { font-style: normal; font-size: 16px; }
+
+        /* CENTER */
+        .center-col { display: flex; flex-direction: column; gap: 20px; }
+        
+        #globe-container {
+            flex: 1; border-radius: 8px; overflow: hidden; position: relative;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.8); border: 1px solid var(--border);
+        }
+        
+        .hud-overlay { position: absolute; pointer-events: none; inset: 0; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; }
+
+        /* TIMELINE REPLAY CONTROLS */
+        .replay-container {
+            pointer-events: auto; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--ui-dim);
+            padding: 10px 20px; border-radius: 30px; display: flex; align-items: center; gap: 15px;
+            backdrop-filter: blur(8px); box-shadow: 0 0 20px rgba(0,0,0,0.5); font-family: var(--font-head);
+        }
+        
+        .replay-lbl { font-size: 10px; color: var(--ui); letter-spacing: 1px; white-space: nowrap; width: 60px; }
+        
+        .custom-range {
+            -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: rgba(255,255,255,0.2);
+            border-radius: 2px; outline: none; cursor: pointer;
+        }
+        .custom-range::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%;
+            background: var(--ui); box-shadow: 0 0 10px var(--ui); cursor: col-resize; transition: transform 0.1s;
+        }
+        .custom-range::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+        .twin-panel {
+            background: rgba(3,4,7,0.75); border: 1px solid var(--border); backdrop-filter: blur(8px);
+            padding: 15px; border-radius: 8px; width: 280px; align-self: flex-start;
+        }
+        .tw-title { font-family: var(--font-head); font-size: 14px; color: #fff; margin-bottom: 2px; letter-spacing:1px;}
+        .geo-coord { font-size: 10px; color: var(--ui); margin-bottom: 12px; font-weight: 700; letter-spacing: 1px; }
+        .tw-row { margin-bottom: 8px; }
+        .tw-lbl { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: var(--ui-dim); text-transform: uppercase;}
+        .tw-bar-bg { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .tw-bar-fg { height: 100%; transition: width 0.5s, background 0.5s; }
+
+        .anom-chart-wrap { height: 160px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; backdrop-filter: blur(12px); }
+
+        /* RIGHT */
+        .svg-cascade { width: 100%; height: 180px; background: rgba(0,0,0,0.3); border: 1px solid rgba(0,255,255,0.1); border-radius: 6px; margin-bottom: 20px; position: relative; }
+        .node { cursor: pointer; transition: stroke-width 0.2s; }
+        .node:hover { stroke-width: 4; }
+
+        /* TOOLTIP */
+        .ui-tooltip {
+            position: absolute; background: rgba(10,15,25,0.9); border: 1px solid var(--ui);
+            padding: 12px; border-radius: 4px; font-family: var(--font-body); color: #fff;
+            font-size: 12px; box-shadow: 0 4px 15px rgba(0,255,255,0.2); pointer-events: none;
+            opacity: 0; transition: opacity 0.2s; z-index: 1000; display: flex; flex-direction: column; gap: 4px;
+        }
+        .tt-title { font-family: var(--font-head); color: var(--ui); font-size: 10px; }
+
+        .xai-wrap { margin-bottom: 20px; }
+        .xai-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .xai-l { width: 60px; font-size: 11px; color: var(--ui-dim); text-transform: uppercase; }
+        .xai-bar { flex: 1; height: 12px; background: rgba(255,255,255,0.05); }
+        .xai-fill { height: 100%; transition: width 0.6s; }
+        .xai-v { width: 30px; font-size: 11px; text-align: right; }
+        .xai-desc { padding: 10px; background: rgba(0,255,255,0.05); border-left: 2px solid var(--ui); font-size: 13px; color: #ccc; line-height: 1.4; margin-top: 10px; }
+
+        .twin-chart-wrap { flex: 1; min-height: 180px; position: relative; }
+
+        /* UTILS */
+        .c-nom { color: var(--nom); } .bg-nom { background: var(--nom); } 
+        .c-deg { color: var(--deg); } .bg-deg { background: var(--deg); } 
+        .c-crit { color: var(--crit); } .bg-crit { background: var(--crit); }
+
+        @keyframes pulse-cyan { 0%, 100% {opacity:1} 50% {opacity:0.5} }
+        @keyframes strobe-red { 0%, 100% {opacity:1} 50% {opacity:0.2; fill: #ff0000;} }
+
+    </style>
+</head>
+<body>
+
+    <div class="crt-overlay"></div>
+    <canvas id="stars-canvas"></canvas>
+
+    <header>
+        <div class="h-title">ORBITAL GUARD</div>
+        <div class="h-stats">
+            <div class="h-stat"><div class="h-val">PATENT PENDING</div><div class="h-lbl">V5 INTELLIGENCE</div></div>
+            <div class="h-stat"><div class="h-val c-nom" id="h-status">NOMINAL</div><div class="h-lbl">FLEET STATUS</div></div>
+            <div class="h-stat"><div class="h-val" id="h-utc">00:00:00</div><div class="h-lbl">UTC TIME</div></div>
+        </div>
+        
+        <div id="export-btns" style="display:flex; gap:15px; margin-left:auto;">
+            <button class="btn-action" onclick="downloadPDF()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path><path d="M6 14h12v8H6z"></path></svg>
+                PDF REPORT
+            </button>
+            <button class="btn-action" onclick="downloadCSV()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                DOWNLOAD RAW CSV
+            </button>
+        </div>
+    </header>
+
+    <div id="main-grid">
+        <!-- LEFT: SYSTEMS -->
+        <div class="glass-panel">
+            <div class="p-head">SWARM INTELLIGENCE</div>
+            <div class="p-content" style="display:flex; flex-direction:column;">
+                <div class="swarm-grid" id="ui-swarm"></div>
+                <div style="font-family:var(--font-head); font-size:11px; margin-bottom:8px; color:var(--ui-dim);">SELECT TARGET</div>
+                <div id="ui-fleet"></div>
+                <div style="font-family:var(--font-head); font-size:11px; margin-top:20px; margin-bottom:8px; color:var(--ui-dim);">AUTONOMOUS ACTIONS</div>
+                <div class="action-list" id="ui-actions"></div>
+                <div style="font-family:var(--font-head); font-size:11px; margin-top:20px; margin-bottom:8px; color:var(--ui-dim);">EVENT LOG</div>
+                <div class="event-log" id="ui-log"></div>
+            </div>
+        </div>
+
+        <!-- CENTER: SPATIAL & RISKS -->
+        <div class="center-col">
+            <div id="globe-container">
+                <div class="hud-overlay">
+                    <div class="twin-panel">
+                        <div class="tw-title">DIGITAL TWIN: <span id="dt-name">SAT-1</span></div>
+                        <div class="geo-coord" id="dt-coord">LAT: 0.00° N | LNG: 0.00° E</div>
+                        
+                        <div class="tw-row"><div class="tw-lbl"><span>THERMAL</span><span id="dt-t-v" class="c-nom">--</span></div><div class="tw-bar-bg"><div class="tw-bar-fg bg-nom" id="dt-t-b" style="width:0%"></div></div></div>
+                        <div class="tw-row"><div class="tw-lbl"><span>POWER</span><span id="dt-b-v" class="c-nom">--</span></div><div class="tw-bar-bg"><div class="tw-bar-fg bg-nom" id="dt-b-b" style="width:0%"></div></div></div>
+                        <div class="tw-row"><div class="tw-lbl"><span>SIGNAL</span><span id="dt-s-v" class="c-nom">--</span></div><div class="tw-bar-bg"><div class="tw-bar-fg bg-nom" id="dt-s-b" style="width:0%"></div></div></div>
+                        <div class="tw-row" style="margin-top:12px;"><div class="tw-lbl"><span>AI RISK INDEX</span><span id="dt-r-v" class="c-nom">LOW</span></div><div class="tw-bar-bg" style="height:4px;"><div class="tw-bar-fg bg-nom" id="dt-r-b" style="width:0%"></div></div></div>
+                        <div style="font-size:10px; color:var(--ui-dim); margin-top:8px; text-transform:uppercase;">LSTM PREDICTION: <span id="dt-pred" style="color:#fff;">NOMINAL</span></div>
+                    </div>
+                    
+                    <!-- REPLAY SCRUBBER -->
+                    <div class="replay-container">
+                        <span class="replay-lbl" id="replay-lbl">LIVE SYNC</span>
+                        <input type="range" id="time-slider" class="custom-range" min="0" max="0" value="0">
+                        <span class="replay-lbl" style="text-align:right">NOW</span>
+                    </div>
+                </div>
+            </div>
+            <div class="anom-chart-wrap"><canvas id="anomaly-chart"></canvas></div>
+        </div>
+
+        <!-- RIGHT: INTELLIGENCE CORE -->
+        <div class="glass-panel">
+            <div class="p-head">INTELLIGENCE CORE</div>
+            <div class="p-content" style="display:flex; flex-direction:column;">
+                <div style="font-family:var(--font-head); font-size:11px; margin-bottom:8px; color:var(--ui-dim);">FAILURE CASCADE</div>
+                <svg class="svg-cascade" id="cascade-svg" viewBox="0 0 300 150">
+                    <defs>
+                        <filter id="glow"><feGaussianBlur stdDeviation="2" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                    </defs>
+                    <path class="edge" id="e1" d="M 50,75 L 120,40" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/>
+                    <path class="edge" id="e2" d="M 50,75 L 120,110" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/>
+                    <path class="edge" id="e3" d="M 120,40 L 200,75" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/>
+                    <path class="edge" id="e4" d="M 120,110 L 200,75" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/>
+                    <path class="edge" id="e5" d="M 200,75 L 260,75" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/>
+                    
+                    <g transform="translate(50,75)"><circle class="node" id="n-bat" r="14" fill="#0a0f19" stroke="#00ffff" stroke-width="2" filter="url(#glow)"/><text y="3" font-size="8" fill="#fff" text-anchor="middle" font-family="'Orbitron'">BAT</text></g>
+                    <g transform="translate(120,40)"><circle class="node" id="n-thm" r="14" fill="#0a0f19" stroke="#00ffff" stroke-width="2" filter="url(#glow)"/><text y="3" font-size="8" fill="#fff" text-anchor="middle" font-family="'Orbitron'">THM</text></g>
+                    <g transform="translate(120,110)"><circle class="node" id="n-pwr" r="14" fill="#0a0f19" stroke="#00ffff" stroke-width="2" filter="url(#glow)"/><text y="3" font-size="8" fill="#fff" text-anchor="middle" font-family="'Orbitron'">PWR</text></g>
+                    <g transform="translate(200,75)"><circle class="node" id="n-com" r="14" fill="#0a0f19" stroke="#00ffff" stroke-width="2" filter="url(#glow)"/><text y="3" font-size="8" fill="#fff" text-anchor="middle" font-family="'Orbitron'">COM</text></g>
+                    <g transform="translate(260,75)"><circle class="node" id="n-cpu" r="14" fill="#0a0f19" stroke="#00ffff" stroke-width="2" filter="url(#glow)"/><text y="3" font-size="8" fill="#fff" text-anchor="middle" font-family="'Orbitron'">CPU</text></g>
+                </svg>
+
+                <div style="font-family:var(--font-head); font-size:11px; margin-bottom:8px; color:var(--ui-dim);">XAI FACTOR ANALYSIS</div>
+                <div class="xai-wrap">
+                    <div class="xai-row"><div class="xai-l">THERMAL</div><div class="xai-bar"><div class="xai-fill bg-nom" id="xai-f-t" style="width:0%"></div></div><div class="xai-v c-nom" id="xai-v-t">0%</div></div>
+                    <div class="xai-row"><div class="xai-l">POWER</div><div class="xai-bar"><div class="xai-fill bg-nom" id="xai-f-p" style="width:0%"></div></div><div class="xai-v c-nom" id="xai-v-p">0%</div></div>
+                    <div class="xai-row"><div class="xai-l">SIGNAL</div><div class="xai-bar"><div class="xai-fill bg-nom" id="xai-f-s" style="width:0%"></div></div><div class="xai-v c-nom" id="xai-v-s">0%</div></div>
+                    <div class="xai-desc" id="xai-desc">Machine Learning models detect no significant deviations.</div>
+                </div>
+
+                <div style="font-family:var(--font-head); font-size:11px; margin-bottom:8px; color:var(--ui-dim);">LSTM TRAJECTORY (T+1 TO T+5)</div>
+                <div class="twin-chart-wrap"><canvas id="twin-chart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ════════════════════════════════════════════════════════════
+           GLOBAL DATA STATE
+        ════════════════════════════════════════════════════════════ */
+        const NUM_SATS = 6;
+        let sats = [];
+        let selIdx = 0;
+        let histLog = {};
+        let evLogs = [];
+        
+        // V2 REPLAY BUFFER
+        let replayBuffer = []; // stores fullData payloads
+        const MAX_REPLAY = 30; // approx 1.5 minutes history
+        const slider = document.getElementById('time-slider');
+        const rLabel = document.getElementById('replay-lbl');
+
+        const getStatus = (t, b) => { if (t > 90 || b < 30) return 'critical'; if (t > 70 || b < 50) return 'degraded'; return 'nominal'; };
+        const getCol = (st) => st==='critical'?'#ff3366':st==='degraded'?'#ffcc00':'#00ffcc';
+
+        /* ════════════════════════════════════════════════════════════
+           DOWNLOAD EXPORTS (PDF & CSV)
+        ════════════════════════════════════════════════════════════ */
+        function downloadPDF() {
+            const btns = document.getElementById('export-btns');
+            btns.style.opacity = '0';
+            
+            const opt = {
+                margin: 0,
+                filename: `orbital_guard_report_${Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, backgroundColor: '#030407', useCORS: true, logging: false },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
+            };
+            
+            html2pdf().set(opt).from(document.body).save().then(() => {
+                btns.style.opacity = '1';
+            });
+        }
+
+        function downloadCSV() {
+            if(!replayBuffer.length) return alert('Gathering data, please wait...');
+            let csv = "Timestamp_Offset,Satellite_ID,Temperature,Battery,Signal,Prediction,Risk_Profile\n";
+            replayBuffer.forEach((frame, idx) => {
+                const ts = -(replayBuffer.length - 1 - idx) * 3 + "s";
+                frame.slice(0,NUM_SATS).forEach(s => {
+                    csv += `${ts},${s.satellite_id},${Math.round(s.temperature*10)/10},${Math.round(s.battery*10)/10},${Math.round((s.signal||85)*10)/10},${s.prediction},"${s.risk?s.risk.join(';'):''}"\n`;
+                });
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `orbital_guard_export_${Date.now()}.csv`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           CASCADE INTERACTIVITY (TOOLTIPS)
+        ════════════════════════════════════════════════════════════ */
+        function setupTooltips() {
+            const tt = document.getElementById('node-tooltip');
+            const nodes = ['bat', 'thm', 'pwr', 'com', 'cpu'];
+            const names = {'bat':'BATTERY ARRAY', 'thm':'THERMAL SNOUT', 'pwr':'POWER GRID', 'com':'RF COMMS', 'cpu':'COMPUTE CORE'};
+            
+            nodes.forEach(n => {
+                const el = document.getElementById(`n-${n}`);
+                el.addEventListener('mousemove', (e) => {
+                    tt.style.opacity = 1;
+                    tt.style.left = (e.clientX + 15) + 'px';
+                    tt.style.top = (e.clientY + 15) + 'px';
+                    document.getElementById('tt-name').textContent = names[n];
+                    
+                    // Generate a fake but convincing tensor prob based on current state
+                    const st = sats[selIdx]?.status || 'nominal';
+                    let prob = 1.2;
+                    if(st==='critical' && ['bat','thm','pwr'].includes(n)) prob = 85 + Math.random()*14;
+                    else if(st==='degraded' && ['bat','thm'].includes(n)) prob = 45 + Math.random()*20;
+                    else prob += Math.random()*5;
+
+                    document.getElementById('tt-desc').textContent = `Subsystem failure likelihood: ${prob.toFixed(1)}%`;
+                });
+                el.addEventListener('mouseleave', () => { tt.style.opacity = 0; });
+            });
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           BACKGROUND / 3D
+        ════════════════════════════════════════════════════════════ */
+        function initStars() {
+            const cvs = document.getElementById('stars-canvas');
+            const ctx = cvs.getContext('2d');
+            cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+            const stars = Array.from({length: 300}, () => ({ x: Math.random()*cvs.width, y: Math.random()*cvs.height, r: Math.random()*1.5, p: Math.random()*Math.PI*2, s: 0.02+Math.random()*0.03 }));
+            function render() {
+                ctx.clearRect(0,0,cvs.width,cvs.height);
+                stars.forEach(st => { st.p+=st.s; ctx.fillStyle=`rgba(0,255,255,${0.2+0.8*(0.5+0.5*Math.sin(st.p))})`; ctx.beginPath(); ctx.arc(st.x,st.y,st.r,0,Math.PI*2); ctx.fill(); });
+                requestAnimationFrame(render);
+            }
+            render();
+            window.addEventListener('resize', () => { cvs.width=window.innerWidth; cvs.height=window.innerHeight; });
+        }
+
+        let tScene, tCam, tRenderer, tEarth, satMeshes = [];
+        let curFrameTime = 0; // Virtual timeline marker for orbits
+        
+        function init3D() {
+            const container = document.getElementById('globe-container');
+            tScene = new THREE.Scene();
+            tCam = new THREE.PerspectiveCamera(40, container.clientWidth/container.clientHeight, 0.1, 100);
+            tCam.position.set(0, 2.5, 5);
+
+            tRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            tRenderer.setSize(container.clientWidth, container.clientHeight);
+            tRenderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(tRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(tCam, tRenderer.domElement);
+            controls.enableDamping = true; controls.enablePan = false; controls.minDistance = 2; controls.maxDistance = 8;
+            controls.autoRotate = true; controls.autoRotateSpeed = 0.5;
+
+            // Earth
+            tEarth = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 48), new THREE.MeshPhongMaterial({ color: 0x05070a, emissive: 0x020305, specular: 0x222222, shininess: 10 }));
+            tScene.add(tEarth);
+            tEarth.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1.01, 24, 24)), new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 })));
+
+            tScene.add(new THREE.AmbientLight(0x404040, 0.5));
+            const sun = new THREE.DirectionalLight(0x55ffff, 1); sun.position.set(5,3,5); tScene.add(sun);
+
+            // Geo-Spatial Orbits Mechanics
+            const incl = [0.1, 0.5, 0.9, 1.2, 1.5, 1.8]; 
+            const raan = [0, 1, 2, 3, 4, 5];
+
+            for(let i=0; i<NUM_SATS; i++) {
+                // WIREFRAME SATELLITE
+                const satGroup = new THREE.Group();
+                const geom = new THREE.IcosahedronGeometry(0.06, 1);
+                const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.8 });
+                const mainMesh = new THREE.Mesh(geom, wireMat);
+                satGroup.add(mainMesh);
+                
+                const glowG = new THREE.IcosahedronGeometry(0.1, 1);
+                const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 });
+                satGroup.add(new THREE.Mesh(glowG, glowMat));
+                
+                tScene.add(satGroup);
+
+                // Add orbit path
+                const pts=[]; const r=1.35;
+                for(let j=0; j<=64; j++){
+                    let a = (j/64)*Math.PI*2;
+                    pts.push(new THREE.Vector3(r*Math.cos(a), 0, r*Math.sin(a)));
+                }
+                const pathG = new THREE.BufferGeometry().setFromPoints(pts);
+                const pathObj = new THREE.Line(pathG, new THREE.LineBasicMaterial({color:0x00ffff, transparent:true, opacity:0.1}));
+                pathObj.rotation.z = incl[i];
+                pathObj.rotation.y = raan[i];
+                tScene.add(pathObj);
+                
+                satMeshes.push({ mesh: satGroup, pathObj, wireMat, glowMat, a: 0, r: 1.35, inc: incl[i], r_node: raan[i] });
+            }
+
+            window.addEventListener('resize', () => { const W = container.clientWidth, H = container.clientHeight; tRenderer.setSize(W, H); tCam.aspect = W/H; tCam.updateProjectionMatrix(); });
+
+            function render() {
+                tEarth.rotation.y = curFrameTime * 0.05;
+                controls.update();
+
+                satMeshes.forEach((sat, i) => {
+                    const ang = curFrameTime * 0.5 + sat.r_node * 2;
+                    const xLocal = sat.r * Math.cos(ang);
+                    const zLocal = sat.r * Math.sin(ang);
+                    
+                    sat.mesh.position.set(xLocal, 0, zLocal);
+                    sat.mesh.position.applyAxisAngle(new THREE.Vector3(0,0,1), sat.inc);
+                    sat.mesh.position.applyAxisAngle(new THREE.Vector3(0,1,0), sat.r_node);
+                    
+                    sat.mesh.rotation.y += 0.02;
+                    sat.mesh.rotation.x += 0.01;
+                    
+                    if (sats[i]) {
+                        const colHex = getCol(sats[i].status.toLowerCase());
+                        sat.wireMat.color.set(colHex);
+                        sat.glowMat.color.set(colHex);
+                    }
+                    sat.mesh.scale.setScalar(i===selIdx ? 1.5 : 1);
+                    sat.glowMat.opacity = i===selIdx ? 0.4 : 0.1;
+
+                    if(i === selIdx) {
+                        const vec = sat.mesh.position.clone().normalize();
+                        const lat = (Math.asin(vec.y) * 180 / Math.PI).toFixed(2);
+                        const lng = (Math.atan2(vec.z, vec.x) * 180 / Math.PI).toFixed(2);
+                        document.getElementById('dt-coord').textContent = `LAT: ${lat}° ${lat>0?'N':'S'} | LNG: ${lng}° ${lng>0?'E':'W'}`;
+                    }
+                });
+                tRenderer.render(tScene, tCam);
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           CHARTS
+        ════════════════════════════════════════════════════════════ */
+        let twinChart, anomChart;
+        function initCharts() {
+            Chart.defaults.color = 'rgba(0, 255, 255, 0.4)'; Chart.defaults.font.family = 'Rajdhani';
+
+            twinChart = new Chart(document.getElementById('twin-chart').getContext('2d'), {
+                type: 'line',
+                data: { labels: Array(25).fill(''), datasets: [
+                        { label: 'History', data: [], borderColor: '#00ffff', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+                        { label: 'LSTM', data: [], borderColor: '#ffb800', borderDash:[5,5], borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#000', tension: 0.3 }
+                    ] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { x: { display:false }, y: { min:0, max:100, grid: { color: 'rgba(0,255,255,0.05)' } } }, animation: { duration: 0 } }
+            });
+
+            anomChart = new Chart(document.getElementById('anomaly-chart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'], datasets: [{ data: [0,0,0,0,0,0], backgroundColor: [], borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { max: 100, min: 0, grid: { color: 'rgba(0,255,255,0.05)' } }, x: { grid: { display: false } } }, animation: { duration: 200 } }
+            });
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           DATA LOOP & REPLAY BUFFER
+        ════════════════════════════════════════════════════════════ */
+        async function fetchAPI() {
+            try {
+                const res = await fetch("http://127.0.0.1:5001/api/ai");
+                const fullData = await res.json();
+                
+                // The backend already provides prediction, status, etc.
+                // We'll normalize keys for the UI
+                fullData.forEach(s => {
+                    s.temperature = s.thermal; // mapping backend 'thermal' to frontend 'temperature'
+                    s.battery = s.power;       // mapping backend 'power' to frontend 'battery'
+                });
+                
+                replayBuffer.push(fullData);
+                if(replayBuffer.length > MAX_REPLAY) replayBuffer.shift();
+
+                slider.max = replayBuffer.length - 1;
+                
+                if(parseInt(slider.value) >= replayBuffer.length - 2) {
+                    slider.value = replayBuffer.length - 1;
+                    applyFrame(replayBuffer.length - 1);
+                }
+
+                if(parseInt(slider.value) === replayBuffer.length - 1) {
+                    let d = fullData.slice(0,NUM_SATS);
+                    d.forEach((s, idx) => { if(s.status==='CRITICAL' && Math.random()>0.8) addLog(`[SAT-${idx+1}] CRITICAL EXCEEDANCE: ${s.thermal.toFixed(1)}°C`); });
+                }
+
+            } catch(e) { console.error("API error", e); }
+        }
+
+        slider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            applyFrame(val);
+            if(val < replayBuffer.length - 1) {
+                rLabel.textContent = `HISTORIC T-${(replayBuffer.length - 1 - val)*3}s`;
+                rLabel.style.color = 'var(--deg)';
+            } else {
+                rLabel.textContent = 'LIVE SYNC';
+                rLabel.style.color = 'var(--ui)';
+            }
+        });
+
+        function applyFrame(idx) {
+            if(!replayBuffer[idx]) return;
+            const fullData = replayBuffer[idx];
+            sats = fullData.slice(0, NUM_SATS);
+            curFrameTime = idx * 0.1; // adjust orbits based on history slider explicitly!
+
+            // Extrapolate history locally for the chart
+            for(let i=0; i<NUM_SATS; i++){
+                histLog[i] = [];
+                for(let j = Math.max(0, idx - 20); j <= idx; j++){
+                    histLog[i].push(replayBuffer[j][i].temperature);
+                }
+            }
+            updateUI();
+        }
+
+        function addLog(msg) {
+            const d = new Date(); const ts = [String(d.getHours()).padStart(2,'0'), String(d.getMinutes()).padStart(2,'0'), String(d.getSeconds()).padStart(2,'0')].join(':');
+            evLogs.unshift({ ts, msg }); if(evLogs.length > 5) evLogs.pop();
+            document.getElementById('ui-log').innerHTML = evLogs.map(l => `<div class="log-item"><span class="log-ts">${l.ts}</span><span class="log-msg">${l.msg}</span></div>`).join('');
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           UI DOM MANIPULATION
+        ════════════════════════════════════════════════════════════ */
+        function updateUI() {
+            if(!sats.length) return;
+            const hasCrit = sats.some(s => s.status==='CRITICAL');
+            const hs = document.getElementById('h-status');
+            hs.textContent = hasCrit ? 'CRITICAL ALERT' : 'NOMINAL'; hs.className = `h-val c-${hasCrit?'crit':'nom'}`;
+
+            document.getElementById('ui-swarm').innerHTML = sats.map((s,i) => `<div class="swarm-node" style="border-bottom-color:${getCol(s.status.toLowerCase())}">SAT-${i+1}</div>`).join('');
+            document.getElementById('ui-fleet').innerHTML = sats.map((s,i) => `<div class="sat-btn ${i===selIdx?'active':''}" onclick="setSat(${i})"><span class="s-name" style="color:${getCol(s.status.toLowerCase())}">SAT-${i+1}</span><span class="s-badge" style="background:${getCol(s.status.toLowerCase())}; color:#000;">${s.status.toUpperCase()}</span></div>`).join('');
+
+            const cSat = sats[selIdx];
+            document.getElementById('ui-actions').innerHTML = (cSat.actions?.length) ? cSat.actions.map(a => `<button class="act-btn"><i>⚡</i> ${a}</button>`).join('') : '<div style="font-size:12px;color:rgba(255,255,255,0.3)">NO ACTION REQ</div>';
+
+            document.getElementById('dt-name').textContent = cSat.satellite_id;
+            
+            const trT = Math.min(100, Math.max(0, cSat.thermal));
+            document.getElementById('dt-t-v').textContent = trT.toFixed(1) + '°C'; 
+            document.getElementById('dt-t-b').style.width = trT + '%'; 
+            document.getElementById('dt-t-b').className = `tw-bar-fg bg-${trT>90?'crit':trT>70?'deg':'nom'}`;
+
+            const trB = Math.min(100, Math.max(0, cSat.power));
+            document.getElementById('dt-b-v').textContent = trB.toFixed(1) + '%'; 
+            document.getElementById('dt-b-b').style.width = trB + '%'; 
+            document.getElementById('dt-b-b').className = `tw-bar-fg bg-${trB<30?'crit':trB<50?'deg':'nom'}`;
+
+            const sPct = Math.min(100, Math.max(0, cSat.signal * 100)); 
+            document.getElementById('dt-s-v').textContent = (cSat.signal * 100).toFixed(1) + '%'; 
+            document.getElementById('dt-s-b').style.width = sPct + '%';
+
+            const riskSc = Math.round((cSat.prediction_score || (cSat.risk ? 0.8 : 0.2)) * 100);
+            document.getElementById('dt-r-v').textContent = riskSc + '%'; 
+            document.getElementById('dt-r-b').style.width = riskSc + '%'; 
+            document.getElementById('dt-r-b').className = `tw-bar-fg bg-${riskSc>80?'crit':riskSc>40?'deg':'nom'}`;
+
+            document.getElementById('dt-pred').textContent = (cSat.prediction_label||'NOMINAL').toUpperCase();
+            document.getElementById('dt-pred').style.color = getCol(cSat.status.toLowerCase());
+
+            const tX = Math.round(trT > 80 ? 80 : trT); 
+            const pX = Math.round((100 - trB) > 70 ? 70 : (100 - trB));
+            document.getElementById('xai-f-t').style.width = tX+'%'; document.getElementById('xai-v-t').textContent = tX+'%'; document.getElementById('xai-f-t').className = `xai-fill bg-${tX>70?'crit':tX>40?'deg':'nom'}`;
+            document.getElementById('xai-f-p').style.width = pX+'%'; document.getElementById('xai-v-p').textContent = pX+'%'; document.getElementById('xai-f-p').className = `xai-fill bg-${pX>70?'crit':pX>40?'deg':'nom'}`;
+
+            document.getElementById('xai-desc').innerHTML = cSat.status==='CRITICAL' ? 'CRITICAL DEVIATION: Coupling failure detected in EPS/Thermal bus.' : cSat.status==='DEGRADED' ? 'DEGRADED: Signal jitter or thermal breach. Monitor closely.' : 'Steady-state orbital parameters. Confidence high.';
+
+            updateCascade(cSat.status.toLowerCase(), cSat.risk || []);
+
+            // Chart Update
+            const hData = histLog[selIdx] || [];
+            if(hData.length && twinChart) {
+                const lh = hData[hData.length-1];
+                const pData = cSat.future || [];
+                let pFull = Array(hData.length - 1).fill(null);
+                pFull.push(lh);
+                
+                // Backend returns normalized future values [0-1], convert to [0-100]
+                pData.forEach(v => pFull.push(v * 100));
+                
+                // Update labels to match the total index count
+                const totalPoints = hData.length + pData.length;
+                twinChart.data.labels = Array(totalPoints).fill('');
+                
+                twinChart.data.datasets[0].data = hData; 
+                twinChart.data.datasets[1].data = pFull; 
+                twinChart.update('none'); // Update without animation for smoother real-time performance
+            }
+
+            if(anomChart) {
+                const rCols = sats.map(s => getCol(s.status.toLowerCase()));
+                anomChart.data.datasets[0].data = sats.map(s => s.status==='CRITICAL'?90:s.status==='DEGRADED'?50:5);
+                anomChart.data.datasets[0].backgroundColor = rCols; anomChart.update();
+            }
+        }
+
+        function setSat(i) { selIdx = i; updateUI(); }
+        function updateCascade(status, riskArray = []) {
+            const nodes = ['bat', 'thm', 'pwr', 'com', 'cpu'];
+            const edges = ['e1', 'e2', 'e3', 'e4', 'e5'];
+            
+            // Reset all
+            nodes.forEach(n => document.getElementById(`n-${n}`).setAttribute('stroke', '#00ffff'));
+            edges.forEach(e => {
+                const el = document.getElementById(e);
+                el.setAttribute('stroke', 'rgba(0,255,255,0.2)');
+                el.style.strokeWidth = '2px';
+            });
+
+            if (status === 'critical' || riskArray.includes('POWER_CRITICAL') || riskArray.includes('THERMAL_OVERHEAT')) {
+                // Critical Hot-Path
+                ['bat', 'thm', 'pwr'].forEach(n => document.getElementById(`n-${n}`).setAttribute('stroke', '#ff3366'));
+                ['e1', 'e2', 'e3'].forEach(e => {
+                    const el = document.getElementById(e);
+                    el.setAttribute('stroke', '#ff3366');
+                    el.style.strokeWidth = '3px';
+                });
+            } else if (status === 'degraded' || riskArray.length > 0) {
+                // Warning Path
+                ['bat', 'thm'].forEach(n => document.getElementById(`n-${n}`).setAttribute('stroke', '#ffcc00'));
+                ['e1', 'e2'].forEach(e => {
+                    const el = document.getElementById(e);
+                    el.setAttribute('stroke', '#ffcc00');
+                    el.style.strokeWidth = '2px';
+                });
+            }
+        }
+
+        setInterval(() => { const d = new Date(); document.getElementById('h-utc').textContent = [String(d.getUTCHours()).padStart(2,'0'), String(d.getUTCMinutes()).padStart(2,'0'), String(d.getUTCSeconds()).padStart(2,'0')].join(':'); }, 1000);
+
+        window.onload = () => {
+            initStars(); init3D(); initCharts(); setupTooltips();
+            addLog("INITIALIZING SYSTEM CONTEXT..."); addLog("BINDING TO LSTM BACKEND...");
+            fetchAPI(); setInterval(fetchAPI, 1000);
+        }
+    </script>
+</body>
+</html>
